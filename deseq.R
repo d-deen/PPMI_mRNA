@@ -32,7 +32,11 @@ graph_theme <- theme_classic() +
 # import sample data sheet
 samples <- read_csv("~/OneDrive - Newcastle University/PhD/PPMI/merged_BL.csv")
 
-# filter samples
+#### filter samples
+# import flagged samples
+flagged <- read_csv("~/OneDrive - Newcastle University/PhD/PPMI/flagged_samples.csv", col_names = FALSE)
+
+# filter samples removing those where the clin diagnosis doesn't match imaging, those that have withdrawn from study
 samples <- samples %>% 
   filter(clin_imag_agree == "Y" & ppmi_enroll != "Withdrew")
 
@@ -43,7 +47,6 @@ names(files) <- pull(samples, PATNO)
 
 # creating tx2gene
 txdb <- makeTxDbFromGFF(file="~/OneDrive - Newcastle University/PhD/PPMI/gencode.v19.annotation.gtf")
-saveDb(x=txdb, file = "gencode.v19.annotation.TxDb")
 k <- keys(txdb, keytype = "TXNAME")
 tx2gene <- AnnotationDbi::select(txdb, k, "GENEID", "TXNAME") 
 
@@ -55,13 +58,52 @@ metadata <- data.frame(samples, row.names = colnames(txi$counts))
 all(colnames(txi$counts) %in% rownames(metadata))
 all(colnames(txi$counts) == rownames(metadata))
 
-# deseq
+# convert sex to character
+metadata$sex <- as.character(as.numeric(metadata$sex))
+
+# create DESeqDataSet
 dds <- DESeqDataSetFromTximport(txi,
                                 colData = metadata,
                                 design = ~ status_clin)
 
+# Get normalised counts and save to file
+normalized_counts <- counts(dds, normalized = TRUE)
+write.table(normalized_counts, file="normalized_counts.txt", sep="\t", quote=F, col.names=NA)
+
+#### EXPLORATORY DATA ANALYSIS
+
+# transform counts via vst and run pca
+vsd <- vst(dds, blind = TRUE)
+vsd_mat <- assay(vsd)
+
+##### principal component analysis
+
+# run pca
+pca <- prcomp(t(vsd_mat))
+
+# the contribution to the total variance for each component
+percentVar <- pca$sdev^2 / sum( pca$sdev^2 )
+percentVar <- percentVar * 100
+percentVar <- round(percentVar, digits = 2)
+
+# combine with metadata
+p <- pca(vsd_mat, metadata = metadata)
+
+# scree plot
+screeplot(p, axisLabSize = 18, titleLabSize = 22)
+
+### PCA biplots
+df <- cbind(metadata, pca$x)
+PCA_plot <- ggplot(df) + geom_point(aes(x = PC3, y = PC4, color = sex), size = 5, alpha = 0.7) +
+  xlab(paste0("PC3: ", percentVar[3], "% variance")) +
+  ylab(paste0("PC4: ", percentVar[4], "% variance")) +
+  graph_theme
+PCA_plot
+
+
+## DIFFERENTIAL GENE EXPRESSION ANALYSIS
 keep <- rowSums(counts(dds)) >= 10
 dds <- dds[keep,]
 
 dds <- DESeq(dds)
-results <- results(dds)
+
