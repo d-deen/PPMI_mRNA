@@ -66,11 +66,9 @@ dds <- DESeqDataSetFromTximport(txi,
                                 colData = metadata,
                                 design = ~ status_clin)
 
-# Get normalised counts and save to file
-normalized_counts <- counts(dds, normalized = TRUE)
-write.table(normalized_counts, file="normalized_counts.txt", sep="\t", quote=F, col.names=NA)
-
-#### EXPLORATORY DATA ANALYSIS
+#########################################
+#### EXPLORATORY DATA ANALYSIS ##########
+#########################################
 
 # transform counts via vst and run pca
 vsd <- vst(dds, blind = TRUE)
@@ -94,16 +92,37 @@ screeplot(p, axisLabSize = 18, titleLabSize = 22)
 
 ### PCA biplots
 df <- cbind(metadata, pca$x)
-PCA_plot <- ggplot(df) + geom_point(aes(x = PC3, y = PC4, color = sex), size = 5, alpha = 0.7) +
-  xlab(paste0("PC3: ", percentVar[3], "% variance")) +
-  ylab(paste0("PC4: ", percentVar[4], "% variance")) +
+PCA_plot <- ggplot(df) + geom_point(aes(x = PC1, y = PC2, color = sex), size = 5, alpha = 0.7) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
   graph_theme
 PCA_plot
 
+
+##### HIERARCHICAL CLUSTERING
+# compute pairwise correlation
+vsd_cor <- cor(vsd_mat)
+head(vsd_cor)
+
+
+# plot as heatmap
+df <- as.data.frame(colData(dds)[,"status_clin"])
+rownames(df) <- colnames(vsd_cor)
+heat.colors <- brewer.pal(6, "Blues")
+pheatmap(vsd_cor, 
+         color = heat.colors, 
+         annotation_col = df,
+         annotation_names_col = FALSE,
+         show_rownames = FALSE,
+         show_colnames = FALSE)
 
 ## DIFFERENTIAL GENE EXPRESSION ANALYSIS
 keep <- rowSums(counts(dds)) >= 10
 dds <- dds[keep,]
 
 dds <- DESeq(dds)
+results <- results(dds)
 
+# Get normalised counts and save to file
+normalized_counts <- counts(dds, normalized = TRUE)
+write.table(normalized_counts, file="normalized_counts.txt", sep="\t", quote=F, col.names=NA)
