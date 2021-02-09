@@ -26,11 +26,11 @@ graph_theme <- theme_classic() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
     axis.text = element_text(size = 18),
-    axis.title = element_text(size = 20,face="bold")
+    axis.title = element_text(size = 20,face = "bold")
   )
 
 # import sample data sheet
-samples <- read_csv("~/OneDrive - Newcastle University/PhD/PPMI/merged_BL.csv")
+samples <- read.csv("~/OneDrive - Newcastle University/PhD/PPMI/all_samples.csv", header = T)
 
 #### filter samples
 # import flagged samples
