@@ -1,6 +1,5 @@
-################################
-########## PACKAGES ###########
-###############################
+
+#### PACKAGES ------------------------------------------------------
 
 library(tximport)
 library(DESeq2)
@@ -22,7 +21,8 @@ library(EnhancedVolcano)
 library(viridis) 
 library(tidyverse)
 
-###### graph theme
+
+#### GRAPH THEME ------------------------------------------------------
 graph_theme <- theme_classic() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -30,17 +30,18 @@ graph_theme <- theme_classic() +
     axis.title = element_text(size = 15)
   )
 
-# import sample data sheet
+
+### SETTING UP SAMPLE AND METADATA ------------------------------------------------------
 samples <- read.csv("~/OneDrive - Newcastle University/PhD/PPMI/merged_BL.csv", header = T)
 
 # filter samples removing those where the clin diagnosis doesn't match imaging, those that have withdrawn from study
-samples <- samples %>% 
+samples_filtered <- samples %>% 
   filter(status_clin == "PD" | status_clin == "HC") %>% 
   filter(EVENT_ID == "BL" & clin_imag_agree == "Y" & ppmi_enroll != "Withdrew")
   
 
 #vector of all filenames including path
-files <- file.path("~/BL/",samples$filename_long)
+files <- file.path("~/BL/",samples_filtered$filename_long)
 # rename files with patno
 names(files) <- pull(samples, PATNO)
 
@@ -50,10 +51,14 @@ k <- keys(txdb, keytype = "TXNAME")
 tx2gene <- AnnotationDbi::select(txdb, k, "GENEID", "TXNAME") 
 
 # tximport
-txi <- tximport(files, type = "salmon", tx2gene = tx2gene, ignoreAfterBar = TRUE)
+txi <- tximport(files, 
+                type = "salmon", 
+                tx2gene = tx2gene, 
+                countsFromAbundance = "lengthScaledTPM", 
+                ignoreAfterBar = TRUE)
 
 # create metadata file and check both files match
-metadata <- data.frame(samples, row.names = colnames(txi$counts))
+metadata <- data.frame(samples_filtered, row.names = colnames(txi$counts))
 all(colnames(txi$counts) %in% rownames(metadata))
 all(colnames(txi$counts) == rownames(metadata))
 
@@ -66,16 +71,16 @@ dds <- DESeqDataSetFromTximport(txi,
                                 colData = metadata,
                                 design = ~ status_clin)
 
-#########################################
-#### EXPLORATORY DATA ANALYSIS ##########
-#########################################
+
+
+#### EXPLORATORY DATA ANALYSIS ------------------------------------------------------
 
 # transform counts via vst and run pca
 vsd <- vst(dds, blind = TRUE)
 vsd_mat <- assay(vsd)
 
-##### principal component analysis
 
+## principal component analysis
 # run pca
 pca <- prcomp(t(vsd_mat))
 
@@ -95,10 +100,7 @@ screeplot(p, axisLabSize = 8, titleLabSize = 22) +
     axis.ticks.x = element_blank()
     )
 
-
-  
-
-### PCA biplots
+## PCA biplots
 # condition
 df <- cbind(metadata, pca$x)
 PCA_condition_1_2 <- ggplot(df) + geom_point(aes(x = PC1, y = PC2, color = status_clin), size = 5, alpha = 0.75) +
@@ -185,7 +187,7 @@ ggarrange(PCA_site_1_2, PCA_site_3_4,
 )
 
 
-##### HIERARCHICAL CLUSTERING
+## HIERARCHICAL CLUSTERING
 # compute pairwise correlation
 vsd_cor <- cor(vsd_mat)
 head(vsd_cor)
@@ -202,7 +204,12 @@ pheatmap(vsd_cor,
          show_rownames = FALSE,
          show_colnames = FALSE)
 
-## DIFFERENTIAL GENE EXPRESSION ANALYSIS
+#### DIFFERENTIAL GENE EXPRESSION ANALYSIS ------------------------------------------------------
+# create DESeqDataSet
+dds <- DESeqDataSetFromTximport(txi,
+                                colData = metadata,
+                                design = ~ status_clin)
+
 keep <- rowSums(counts(dds)) >= 10
 dds <- dds[keep,]
 
@@ -211,23 +218,45 @@ results <- results(dds)
 
 # Get normalised counts and save to file
 normalized_counts <- counts(dds, normalized = TRUE)
-write.table(normalized_counts, file="normalized_counts.txt", sep="\t", quote=F, col.names=NA)
+# write.table(normalized_counts, file="normalized_counts.txt", sep="\t", quote=F, col.names=NA)
 
 # plot disperal estimates
 plotDispEsts(dds)
 
+
 ## building results table
 contrast <- c("status_clin", "PD", "HC")
-results_sig <- results(dds,
+results <- results(dds,
                    contrast = contrast,
                    alpha = 0.05)
+                   
                    #lfcThreshold = 0.58)
 
-results_sig %>% data.frame() %>% View()
+#results %>% data.frame() %>% View()
+#results_csv <- results %>% data.frame
+#write.csv(results_csv, "results.csv")
 
 results_shrink <- lfcShrink(dds,
                      contrast = contrast,
-                     res = results_sig,
+                     res = results,
                      type = "ashr")
 
 plotMA(results_shrink)
+
+# histogram of p values
+use <- results$baseMean > metadata(results)$filterThreshold
+h1 <- hist(results$pvalue[!use], breaks=0:50/50, plot=FALSE)
+h2 <- hist(results$pvalue[use], breaks=0:50/50, plot=FALSE)
+colori <- c(`do not pass`="khaki", `pass`="powderblue")
+
+barplot(height = rbind(h1$counts, h2$counts), beside = FALSE,
+        col = colori, space = 0, main = "", ylab="frequency")
+text(x = c(0, length(h1$counts)), y = 0, label = paste(c(0,1)),
+     adj = c(0.5,1.7), xpd=NA)
+legend("topright", fill=rev(colori), legend=rev(names(colori)))
+
+## investigating independent filtering
+metadata(results)$filterThreshold
+
+### plot counts of ICICLE genes
+
