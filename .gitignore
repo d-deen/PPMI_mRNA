@@ -2,3 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+
+normalized_counts.txt
+
+results.csv
