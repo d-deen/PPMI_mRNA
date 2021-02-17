@@ -1,5 +1,6 @@
 
-#### PACKAGES ------------------------------------------------------
+
+# PACKAGES ----------------------------------------------------------------
 
 library(tximport)
 library(DESeq2)
@@ -22,7 +23,9 @@ library(viridis)
 library(tidyverse)
 
 
-#### GRAPH THEME ------------------------------------------------------
+
+# GRAPH THEME -------------------------------------------------------------
+
 graph_theme <- theme_classic() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -31,7 +34,9 @@ graph_theme <- theme_classic() +
   )
 
 
-### SETTING UP SAMPLE AND METADATA ------------------------------------------------------
+
+# SETTING UP SAMPLE INFO AND METADATA -------------------------------------
+
 samples <- read.csv("~/OneDrive - Newcastle University/PhD/PPMI/merged_BL.csv", header = T)
 
 # filter samples removing those where the clin diagnosis doesn't match imaging, those that have withdrawn from study
@@ -43,19 +48,23 @@ samples_filtered <- samples %>%
 #vector of all filenames including path
 files <- file.path("~/BL/",samples_filtered$filename_long)
 # rename files with patno
-names(files) <- pull(samples, PATNO)
+names(files) <- pull(samples_filtered, PATNO)
 
 # creating tx2gene
 txdb <- makeTxDbFromGFF(file="~/OneDrive - Newcastle University/PhD/PPMI/gencode.v19.annotation.gtf")
 k <- keys(txdb, keytype = "TXNAME")
 tx2gene <- AnnotationDbi::select(txdb, k, "GENEID", "TXNAME") 
+tx2gene$TXNAME <- sub("\\.\\d+", "", tx2gene$TXNAME)
+tx2gene$GENEID <- sub("\\.\\d+", "", tx2gene$GENEID)
+
 
 # tximport
 txi <- tximport(files, 
                 type = "salmon", 
                 tx2gene = tx2gene, 
                 countsFromAbundance = "lengthScaledTPM", 
-                ignoreAfterBar = TRUE)
+                ignoreAfterBar = TRUE,
+                ignoreTxVersion = TRUE)
 
 # create metadata file and check both files match
 metadata <- data.frame(samples_filtered, row.names = colnames(txi$counts))
@@ -157,7 +166,7 @@ PCA_age_3_4 <- ggplot(df) + geom_point(aes(x = PC3, y = PC4, color = age_bl), si
   xlab(paste0("PC3: ", percentVar[3], "% variance")) +
   ylab(paste0("PC4: ", percentVar[4], "% variance")) +
   scale_colour_viridis() +
-  graph_theme
+  graph_th
 PCA_age_3_4
 
 ggarrange(PCA_age_1_2, PCA_age_3_4,
@@ -204,12 +213,34 @@ pheatmap(vsd_cor,
          show_rownames = FALSE,
          show_colnames = FALSE)
 
-#### DIFFERENTIAL GENE EXPRESSION ANALYSIS ------------------------------------------------------
+
+# DIFFERENTIAL EXPRESSION ANALYSIS ----------------------------------------
 # create DESeqDataSet
 dds <- DESeqDataSetFromTximport(txi,
                                 colData = metadata,
                                 design = ~ status_clin)
 
+
+
+# library sizes
+library_sizes <- colSums(counts(dds))
+
+library_sizes <- as.data.frame(library_sizes)
+library_sizes <- library_sizes %>% 
+  rownames_to_column(var = "patno")
+  
+ggplot(library_sizes, aes(x = patno, y = library_sizes)) +
+  geom_col(colour = "black") +
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab("Sample") +
+  ylab("Library Size") +
+  graph_theme +
+  theme(axis.text.x = element_blank())
+
+#  
+  
+
+# pre filtering
 keep <- rowSums(counts(dds)) >= 10
 dds <- dds[keep,]
 
@@ -218,7 +249,7 @@ results <- results(dds)
 
 # Get normalised counts and save to file
 normalized_counts <- counts(dds, normalized = TRUE)
-# write.table(normalized_counts, file="normalized_counts.txt", sep="\t", quote=F, col.names=NA)
+#write.table(normalized_counts, file="normalized_counts.txt", sep="\t", quote=F, col.names=NA)
 
 # plot disperal estimates
 plotDispEsts(dds)
@@ -259,4 +290,5 @@ legend("topright", fill=rev(colori), legend=rev(names(colori)))
 metadata(results)$filterThreshold
 
 ### plot counts of ICICLE genes
+d <- plotCounts(dds, gene = "ENSG00000204592", intgroup = "status_clin", )
 
