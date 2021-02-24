@@ -32,4 +32,9 @@ cohort_registry_new <- read.csv("cohort_registry_new.csv", header = T)
 all_samples <- rbind(merged_samples, cohort_registry_new)
 write_csv(all_samples, "all_samples.csv")
 
+# adding on file path to all samples
+all_samples <- read.csv(file = "all_samples.csv", header = T)
+filepaths <- read.csv("filepaths.csv", header = T)
 
+master <- merge(all_samples, filepaths, by = c("PATNO", "EVENT_ID"), all.x = T)
+write.csv(master, "metadata.csv", row.names = F)
