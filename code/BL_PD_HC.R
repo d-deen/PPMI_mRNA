@@ -32,6 +32,7 @@ graph_theme <- theme_classic() +
     plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
     axis.text = element_text(size = 13, colour = "black"),
     axis.title = element_text(size = 13),
+    aspect.ratio = 1
   )
 
 
@@ -269,7 +270,7 @@ lib_bar <- ggplot(library_sizes, aes(x = patno, y = library_sizes)) +
   geom_col(colour = "black") +
   scale_y_continuous(expand = c(0, 0)) +
   xlab("Sample") +
-  ylab("Library Size") +
+  ylab("Total number of counts") +
   graph_theme +
   theme(axis.text.x = element_blank(),
         aspect.ratio = 1)
@@ -296,45 +297,55 @@ ncu_observations <- ncu_observations %>%
 
 # library size
 ncu_sum_gene <- as.data.frame(colSums(normalized_counts_unfiltered))
-ncu_sum_gene <- ncu_sum_gene%>% 
+ncu_sum_gene <- ncu_sum_gene %>% 
   rownames_to_column (var = "patno") %>% 
   rename(lib_size = `colSums(normalized_counts_unfiltered)`)
 
+# merge datasets togther
 df <- merge(ncu_mean_gene, ncu_observations, by = "patno")
 df <- merge(df, ncu_sum_gene, by = "patno")
 
+patno.status_clin <- samples_filtered %>% 
+  select(PATNO, status_clin) %>% 
+  rename(patno = PATNO) 
+patno.status_clin[] <- lapply(patno.status_clin, as.character)
+
+gene_counts <- left_join(df, patno.status_clin, by = "patno")
+
 # plot no of genes vs mean gene count
-a <- ggplot(df, aes(x = observations, y = means)) +
+a <- ggplot(gene_counts, aes(x = observations, y = means)) +
   geom_point(shape = 1) +
   geom_smooth(method=lm) +
   xlab("Number of genes detected") +
   ylab("Average gene count") +
   graph_theme
+a
 
 # plot library size vs no of genes
-b <- ggplot(df, aes(x = observations, y = lib_size)) +
-  geom_point(shape = 1) +
+b <- ggplot(gene_counts, aes(x = observations, y = lib_size)) +
+  geom_point(aes(colour = status_clin)) +
   geom_smooth(method=lm) +
   stat_cor(p.accuracy = 0.001) +
   xlab("Number of genes detected") +
-  ylab("Library size") +
+  ylab("Total number of counts") +
+  scale_color_brewer(palette = "Set2") +
   graph_theme +
-  theme(aspect.ratio = 1)
+  theme(legend.position = "bottom")
 b
 
 # plot lib size vs mean gene count
-c <- ggplot(df, aes(x = means, y = lib_size)) +
+c <- ggplot(gene_counts, aes(x = means, y = lib_size)) +
   geom_point(shape = 1) +
   xlab("Average gene count") +
-  ylab("Library size") +
+  ylab("Total number of counts") +
   stat_cor(p.accuracy = 0.001) +
   graph_theme +
   theme(aspect.ratio = 1)
 c
 
-lib_scatter <- ggarrange(c, b, nrow = 2)
+lib_scatter <- plot_grid(c, b, nrow = 2, align = "h", axis = "b")
 
-ggarrange(lib_bar, lib_scatter, ncol = 2, align = "hv")
+plot_grid(lib_bar, lib_scatter, ncol = 2, align = "hv")
 ggsave("figures/library size plots.pdf")
 
 # pre filtering
